@@ -10,7 +10,7 @@
 #ifndef BOARDTYPE_MINI
 #include "LCD_Driver.h"
 #endif
-#define	DEBUG_DUST
+//#define	DEBUG_DUST
 #ifdef	DEBUG_DUST
 #define	DPRINTF(a) printf a
 #else
@@ -1829,12 +1829,15 @@ void ProcessSerialCommand(void)
                       SendCalInfo();
                     }
                   break;
+#ifdef TEMP_DETECT
                 case CMD_GET_CALIBRATE_TEMP:
                   if (commandBytes[3] == Address)
                     {
                       SendCalInfoTemp();
                     }
                   break;
+#endif
+
                 case CMD_CALIBRATE_A:
                   //todo
                   if (commandBytes[3] == Address || (Address != 1 && commandBytes[3] == 0))
@@ -2041,8 +2044,7 @@ void Display_Min_Aver(uint16_t Min_Aver)
 {
   char strVal[LCD_WIDTH] = "Min_Value:      ";
   PrintToLCD(1, strVal, Min_Aver, 10);
-  if (CurrentUARTMod != UARTMOD_CAL)
-    DPRINTF(("Min_Value: %d, Total: %d\r\n", Min_Aver, Total_ReadCount));
+  //if (CurrentUARTMod != UARTMOD_CAL) DPRINTF(("Min_Value: %d, Total: %d\r\n", Min_Aver, Total_ReadCount));
 }
 
 void TryUpdateClean(uint16_t value)
@@ -2297,7 +2299,7 @@ void DustSensor_Process(void)
                     TurnDownCleanVolConfirmTimes = 0;
                   }
               }
-            }//
+            }
 
         }
 
@@ -2375,6 +2377,7 @@ void DustSensor_Process(void)
       // 向上更新无尘电压 镜头有灰尘，散射严重,每分钟检查一次
       if (Update_ReadCount >= UPDATE_CYCLIC_COUNT)
         {
+//每分钟干活
           uint16_t min_Aver;
           uint8_t i;
           uint32_t min_Count = 0;
