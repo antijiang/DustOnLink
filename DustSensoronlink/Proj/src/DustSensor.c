@@ -1,4 +1,4 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -10,7 +10,7 @@
 #ifndef BOARDTYPE_MINI
 #include "LCD_Driver.h"
 #endif
-//#define	DEBUG_DUST
+#define	DEBUG_DUST
 #ifdef	DEBUG_DUST
 #define	DPRINTF(a) printf a
 #else
@@ -51,7 +51,7 @@ volatile uint16_t TurnUpCleanVolConfirmTimes = 0;
 //volatile uint16_t Last_Value = 0;  // 最后的值
 //volatile _Bool Last_Machine_State = FALSE;
 //volatile _Bool First_Start = FALSE;
-volatile _Bool Current_Machine_State = FALSE;
+
 volatile uint8_t Readed_Machine_State = 0x05;  // 5: 连接错误 0：关闭 1：打开
 uint16_t workingTm = 0; //对最近发来指令的时间差，倒计时时到0后，机器为未工作状态
 
@@ -1130,8 +1130,8 @@ uint16_t Cyclic_Aver(uint16_t* buf, uint8_t BUFSIZE, uint8_t startpos,
 	// 计算最近cyclic_length秒的均值
 	uint32_t result = 0;
 	uint8_t i;
-	uint8_t k;
-	if (k < AVGDataNum) //取样数据 还未达到需要的样板长度（未满）
+	uint8_t k = *p_totalCnt;
+	if (k < AVGDataNum) //取样数据还未达到需要的样板长度（未满）
 	{
 		k = *p_totalCnt;
 	}
@@ -1349,7 +1349,7 @@ void DustSensor_Init(void)
 	/* 计算KB值 */
 	Calc_Virtual_KandB();
 
-	printf("StartingQCL008... \r\n");
+	printf("StartingQCL008... Build At %s \r\n", __DATE__);
 #ifdef	TEMP_DETECT
 	SYS ->TEMPCR = 1;
 #endif
@@ -1419,7 +1419,7 @@ void ACK(char err)
 	if (err == 0)
 		sprintf(buf, "%s", "OK\r");
 	else
-		sprintf(buf, "%s\r", "ERR");
+		sprintf(buf, "%s", "ERR\r");
 	Uartcmd(buf);
 
 }
@@ -1538,27 +1538,7 @@ void DispOn(void *p1)
 	ACK(err);
 
 }
-//切换到串口模式读取
-void SwitchMode(void * p1)
-{
-	int a;
-	char err = 0;
-	if (p1 != NULL)
-	{
 
-		a = atoi((char *) p1);
-		if (a == 1)
-			DustPortOrUartMode = 1;
-		else if (a == 0)
-			DustPortOrUartMode = 0;
-		else
-			err = 1;
-	}
-	else
-		err = 1;
-	ACK(err);
-
-}
 //除尘机状态
 void SetMStatus(void *p1)
 {
@@ -1570,11 +1550,21 @@ void SetMStatus(void *p1)
 		a = atoi((char *) p1);
 		if (a == 1)
 		{
+			DustPortOrUartMode = 1;  //自动切换到串口模式
 			Readed_Machine_State = 1;
 			workingTm = 10 * 60; //  minute
+
 		}
 		else if (a == 0)
+		{
+			DustPortOrUartMode = 1;
+			workingTm = 10 * 60; //  minute
 			Readed_Machine_State = 0;
+		}
+		else if (a == 3)
+		{
+			DustPortOrUartMode = 0; //读取端口
+		}
 		else
 			err = 1;
 	}
@@ -1630,7 +1620,7 @@ const struct _command Scommand[] =
 {
 
 { "S_DISPON", "O", DispOn },  //开显示
-		{ "S_UARTMODE", " ", SwitchMode }, //串口模式 or IO
+
 		{ "S_STATUS", " ", SetMStatus }, //设置除尘机状态
 		{ "G_RDUST", " ", ReadMDUST },   //读灰尘
 		{ "S_AONLEVEL", " ", SetAutonlevel },   //设置自动开的值
@@ -1670,7 +1660,8 @@ void ProcessInterfaceCommand(void)
 			s1 = Scommand[i].cmd;
 
 		}
-
+		if (s1 == NULL)
+			ACK(1);
 	}
 }
 
@@ -2024,114 +2015,6 @@ void Display_Min_Aver(uint16_t Min_Aver)
 	//if (CurrentUARTMod != UARTMOD_CAL) DPRINTF(("Min_Value: %d, Total: %d\r\n", Min_Aver, Total_ReadCount));
 }
 
-void TryUpdateClean(uint16_t AVR1minvalue)
-{
-
-	uint16_t First_Value = 0;
-	uint16_t Last_Value = 0;
-	static volatile _Bool First_Start = FALSE;
-	static volatile _Bool Last_Machine_State = FALSE;
-
-	if (CurrentUARTMod == UARTMOD_CAL)
-		Current_Machine_State = 0; //2015.0606
-	else
-	{
-		// 提高无尘电压
-		// 获取机器工作状态
-		Current_Machine_State = GetMachineWorking();
-		// 判断是否初次启动
-		if (Current_Machine_State && !Last_Machine_State)
-			First_Start = TRUE;
-		Last_Machine_State = Current_Machine_State;
-	}
-
-	if (Current_Machine_State == 0)
-	{
-		// 机器关闭状态
-		TurnUpCleanVolConfirmTimes = 0;
-	}
-	else
-	{
-		// 如果机器开启
-		if (Last_Value == 0)
-			Last_Value = AVR1minvalue;
-#ifdef	DEBUG_DUST
-		DPRINTF(("Machine is working, FirstStart: %d\r\n", First_Start));
-		DPRINTF(("minValue: %d\r\n", min_Aver));
-		DPRINTF(("FirstValue: %d\r\nLast_Value: %d\r\nTurnUpCleanVolConfirmTimes: %d\r\n",
-						First_Value, Last_Value, TurnUpCleanVolConfirmTimes));
-		DPRINTF(("Clean Voltage: %d \r\n", CleanVoltage));
-#endif
-		// 如果灰尘值大于一定值
-		if (AVR1minvalue
-				<= CleanVoltage + CLEAN_UP_UPDATE_THRESHOLD * Sensitivity)
-//不大于门限
-		{
-			Last_Value = 0;
-			TurnUpCleanVolConfirmTimes = 0;
-		}
-		else
-		{
-			// 与最后一次获取值相差的百分比
-			float percent =
-					(AVR1minvalue > Last_Value) ?
-							((AVR1minvalue - Last_Value) / (float) Last_Value) :
-							((Last_Value - AVR1minvalue) / (float) Last_Value);
-			if (First_Start)
-			{
-				First_Value = AVR1minvalue;
-				First_Start = FALSE;
-			}
-			if (First_Value < AVR1minvalue)
-				First_Value = AVR1minvalue;
-			// 设置最后获取到的值
-			if (percent > CLEAN_UP_DISTINGUISH_RANGE)
-			{
-				Last_Value = AVR1minvalue;
-				TurnUpCleanVolConfirmTimes = 0;
-			}
-			else
-			{
-#ifdef	REF25_VDD
-				if (VddRel_MV > MAX_UPDATE_VDD) //电源电压升高了
-				{
-					TurnUpCleanVolConfirmTimes = 0;
-				}
-				else
-#endif
-					TurnUpCleanVolConfirmTimes++;
-			}
-
-			DPRINTF(("Current Change: %f%%\r\n", percent * 100));
-			if (TurnUpCleanVolConfirmTimes >= CLEAN_UP_CONFIRM_TIMES)
-			{
-				if ((AVR1minvalue < First_Value)
-						&& (((First_Value - AVR1minvalue) / (float) First_Value)
-								> CLEAN_UP_FINAL_RANGE))
-				{
-					uint16_t subValue = ((Last_Value - CleanVoltage)
-							* CLEAN_UP_CALI_VALUE);
-					if (subValue < 3 * Sensitivity)
-						subValue = 3 * Sensitivity;
-					CleanVoltage = (uint16_t)(CleanVoltage + subValue);
-					First_Value = AVR1minvalue;
-					StoreCleanVoltage();
-					Calc_Virtual_KandB();
-					if (CurrentUARTMod == UARTMOD_DATA_LINK)
-					{
-						/**/
-						CurrentUARTMod = UARTMOD_DEBUG;
-						DPRINTF(("CLEAN_VOLTAGE Updated to: %d\r\n", CleanVoltage));
-						CurrentUARTMod = UARTMOD_DATA_LINK;
-						/**/
-					}
-				}
-				TurnUpCleanVolConfirmTimes = 0;
-			}
-		}
-	}
-}
-
 _Bool GetMachineWorking(void)
 {
 	_Bool up = FALSE;
@@ -2154,7 +2037,7 @@ void CalVDDAVG()
 	Vdd_Aver1S = sec_Aver;
 	//电源电压  Vdd_Aver1S=v25/vdd*4096   vdd==(int) ((uint32_t) 2500*4096/Vdd_Aver1S);
 	VddRel_MV = (uint16_t)((uint32_t) 2500 * 4096 / Vdd_Aver1S);
-	DPRINTF(("VDD=%dmV\r\n", VddRel_MV));
+	//DPRINTF(("VDD=%dmV\r\n", VddRel_MV));
 	//        DPRINTF(("VDD=%dmV\r\n", Vdd_Aver1S));
 }
 #endif
@@ -2168,7 +2051,7 @@ void CalTempVoltageAVG()
 	//Vtemp_Aver1S=sec_Aver;
 	Vtemp_Aver1S = (uint16_t)((uint32_t) sec_Aver * 4096 / Vdd_Aver1S / 2);
 
-	DPRINTF(("VTEMP=%dmV\r\n", Vtemp_Aver1S));
+//	DPRINTF(("VTEMP=%dmV\r\n", Vtemp_Aver1S));
 }
 #endif
 //计算1秒的灰尘采样平均值
@@ -2195,7 +2078,7 @@ void CalDustVolTageAVG()
 		PrintToLCD(0, strVal, (int) (sec_Aver * REFVOL / ADC_MAX_VALUE), 10);
 	}
 
-	DPRINTF(("Sec_Value: %dmV\r\n", (int)(sec_Aver * REFVOL / ADC_MAX_VALUE)));
+	//DPRINTF(("Sec_Value: %dmV\r\n", (int)(sec_Aver * REFVOL / ADC_MAX_VALUE)));
 }
 //
 uint16_t GetCurrentSmoke(uint16_t tempv)
@@ -2231,20 +2114,129 @@ uint16_t GetCurrentSmoke(uint16_t tempv)
 void JudgeRedo()
 {
 	uint16_t CyclicAver1, i;      //最近n秒平均值 突变
-	//最近3秒变化量大，则数据重新采样，以利于显示的快速更新
+	//最近3秒变化量大，则数据重新采样，以利于显示的快速更新，取最近3秒平均值
 	CyclicAver1 = Cyclic_Aver((uint16_t*) Min_Data, 60, Min_ReadCount, 3,
 			&Total_ReadCount);
 	//    if(abs(CyclicAver1-CyclicAver)*10/CyclicAver>2)
 	if (abs((int32_t) CyclicAver1 - (int32_t) CyclicAver) > 45)
 	{
-		Min_ReadCount = 0;
-		Update_ReadCount = 0;
-		Total_ReadCount = 0;
-		TurnDownCleanVolConfirmTimes = 0;
+//		CyclicAver1=Min_Data[(Min_ReadCount-1)%60];//变化根剧烈
 		for (i = 0; i < UPDATE_CYCLIC_COUNT; i++)
 		{
 			Min_Data[i] = CyclicAver1;
-			Update_Data[i] = CyclicAver1;
+			//	Update_Data[i] = CyclicAver1;
+		}
+		Min_ReadCount = 0;
+		//Update_ReadCount = 0;
+		Total_ReadCount = 0;
+		//TurnDownCleanVolConfirmTimes = 0;
+	}
+}
+
+void TryUpdateClean(uint16_t AVR1minvalue)
+{
+
+	static uint16_t First_Value = 0;  //最大值
+	static uint16_t Last_Value = 0;  //平台值
+	static volatile _Bool First_Start = FALSE;
+	static volatile _Bool Last_Machine_State = FALSE;
+	_Bool Current_Machine_State = 0;
+
+	// 提高无尘电压
+	// 获取机器工作状态
+	Current_Machine_State = GetMachineWorking();
+	// 判断是否初次启动
+	if (Current_Machine_State && !Last_Machine_State)
+		First_Start = TRUE;
+	Last_Machine_State = Current_Machine_State;
+
+	if ((Current_Machine_State == 0) || (CurrentUARTMod == UARTMOD_CAL)
+#ifdef	REF25_VDD
+			|| (VddRel_MV > MAX_UPDATE_VDD) //电源电压升高了
+#endif
+
+			)
+
+	{
+		TurnUpCleanVolConfirmTimes = 0;
+		return;
+	}
+
+	else
+	{
+		// 如果机器开启
+		if (Last_Value == 0)
+			Last_Value = AVR1minvalue;
+#ifdef	DEBUG_DUSTxx
+		DPRINTF(("Machine is working, FirstStart: %d\r\n", First_Start));
+		DPRINTF(("minValue: %d\r\n", AVR1minvalue));
+		DPRINTF(("FirstValue: %d\r\nLast_Value: %d\r\nTurnUpCleanVolConfirmTimes: %d\r\n",
+						First_Value, Last_Value, TurnUpCleanVolConfirmTimes));
+		DPRINTF(("Clean Voltage: %d \r\n", CleanVoltage));
+#endif
+		// 如果灰尘值小于一定值15ug以上，不更新
+		if (AVR1minvalue
+				<= CleanVoltage + CLEAN_UP_UPDATE_THRESHOLD * Sensitivity)
+//不大于门限
+		{
+			Last_Value = 0;
+			TurnUpCleanVolConfirmTimes = 0;
+		}
+		else
+		{
+			// 与最后一次获取值相差的百分比 ，平台出现 + - CLEAN_UP_DISTINGUISH_RANGE
+			float percent =
+					(AVR1minvalue > Last_Value) ?
+							((AVR1minvalue - Last_Value) / (float) Last_Value) :
+							((Last_Value - AVR1minvalue) / (float) Last_Value);
+			if (First_Start)
+			{
+				First_Value = AVR1minvalue;
+				First_Start = FALSE;
+			}
+			if (First_Value < AVR1minvalue)
+				First_Value = AVR1minvalue;
+
+			if (percent > CLEAN_UP_DISTINGUISH_RANGE)
+			{
+				// 设置最后获取到的值 超出平台，不更新,但更新平台值
+				Last_Value = AVR1minvalue;
+				TurnUpCleanVolConfirmTimes = 0;
+			}
+			else
+			{
+				// 设置最后获取到的值在平台内，计数
+				TurnUpCleanVolConfirmTimes++;
+			}
+
+			if (TurnUpCleanVolConfirmTimes >= CLEAN_UP_CONFIRM_TIMES)
+			{
+				//平台值 低于 最高值40%以上 才更新
+				if ((AVR1minvalue < First_Value)
+						&& (((First_Value - AVR1minvalue) / (float) First_Value)
+								> CLEAN_UP_FINAL_RANGE))
+				{
+					uint16_t subValue = ((Last_Value - CleanVoltage)
+							* CLEAN_UP_CALI_VALUE);
+					if (subValue < 3 * Sensitivity)
+						subValue = 3 * Sensitivity;
+					CleanVoltage = (uint16_t)(CleanVoltage + subValue);
+					First_Value = AVR1minvalue;
+					StoreCleanVoltage();
+					Calc_Virtual_KandB();
+					if (CurrentUARTMod == UARTMOD_DATA_LINK)
+					{
+						/**/
+						CurrentUARTMod = UARTMOD_DEBUG;
+						DPRINTF(
+								("CLEAN_VOLTAGE Updated to: %d\r\n", CleanVoltage));
+						DPRINTF(("Current Change: %f%%\r\n", percent * 100));
+						CurrentUARTMod = UARTMOD_DATA_LINK;
+						/**/
+					}
+				}
+				TurnUpCleanVolConfirmTimes = 0;
+			}
 		}
 	}
 }
@@ -2268,20 +2260,23 @@ void CalTurnDown(uint16_t DustV)
 
 	}
 
-	temp = (CleanVoltage - DustV) * 100 / CleanVoltage;
-	if (temp < 5 || temp > 10)
-		return;
+	//temp = (CleanVoltage - DustV) * 100 / CleanVoltage;
 //以下介于3% -10% 才更新新，
 
+	temp = GetCurrentSmoke(CleanVoltage - DustV + CleanVoltage);
+	if (temp < 5 || temp > 15)
+		return;
+	//介于无尘电压以下 5ug - 15ug才更新新无尘电压
+
 	// 如果持续次数超过 CLEAN_VOLTAGE_CONFIRM_TIMES 次 则更新CLEAN_VOLTAGE
-	// 注意: 此处为每秒比较一次,而不是每5秒比较一次.
+	// 注意: 此处为每分钟比较一次,
 	if (++TurnDownCleanVolConfirmTimes >= CLEAN_DOWN_CONFIRM_TIMES)
 	{
 		if (CurrentUARTMod == UARTMOD_DATA_LINK)
 		{
 			/**/
 			CurrentUARTMod = UARTMOD_DEBUG;
-			DPRINTF(("CLEAN_VOLTAGE Updated to: %d\r\n", DustV));
+			DPRINTF(("CLEAN_VOLTAGE Down Updated to: %d\r\n", DustV));
 			CurrentUARTMod = UARTMOD_DATA_LINK;
 			/**/
 		}
@@ -2369,9 +2364,9 @@ void DustSensor_Process(void)
 		// 获取机器工作状态
 		// 发送格式4字节：FA55
 		// 返回值格式为： 04 + 状态（关/开: 55/aa） + 03
-		if (Update_ReadCount == UPDATE_CYCLIC_COUNT - 1)
+		if (Update_ReadCount == UPDATE_CYCLIC_COUNT - 1
+				&& CurrentUARTMod != UARTMOD_CAL)
 		{
-
 			if (DustPortOrUartMode == 0) //jxd利用端口判定状态
 			{
 				if (DUSTIN_STATUS == 1)
@@ -2386,7 +2381,7 @@ void DustSensor_Process(void)
 		}
 		if (workingTm != 0)
 			workingTm--;
-		// 计算分钟均值
+		// 计算60次秒 均值
 		if (Min_ReadCount >= 60)
 		{
 			uint16_t min_Aver;
@@ -2395,10 +2390,6 @@ void DustSensor_Process(void)
 			//Todo: DisPlay Min_Aver
 			if (CurrentUARTMod == UARTMOD_DEBUG)
 				Display_Min_Aver(min_Aver);
-// 向上更新无尘电压 镜头有灰尘，散射严重,每分钟检查一次
-			TryUpdateClean(min_Aver);
-//发光老化或电源电压低了//每 时调用一次//向下更新
-			CalTurnDown(min_Aver);
 
 		}
 
@@ -2409,7 +2400,10 @@ void DustSensor_Process(void)
 			min_Aver = Util_CalcAvg((uint16_t *) Update_Data,
 					UPDATE_CYCLIC_COUNT);
 			Update_ReadCount = 0;
-
+// 向上更新无尘电压 镜头有灰尘，散射严重,每分钟检查一次
+			TryUpdateClean(min_Aver);
+//发光老化或电源电压低了//每 时调用一次//向下更新
+			CalTurnDown(min_Aver);
 		}
 
 		Start_PWMG_INT();

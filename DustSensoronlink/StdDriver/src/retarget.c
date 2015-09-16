@@ -99,7 +99,7 @@ void SendChar(int ch)
 //        }
     }
 #else
-   if(CurrentUARTMod == UARTMOD_DEBUG)
+   //if(CurrentUARTMod == UARTMOD_DEBUG)
         SendChar_ToUART(ch);
 #endif
 }
