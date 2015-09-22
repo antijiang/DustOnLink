@@ -5,6 +5,8 @@
 #define PIN_sclk	P07
 #define	PIN_sid	P05
 #define PIN_reset	P32
+#define	BOARDTYPE_MINI
+#ifndef BOARDTYPE_MINI
 const uint8_t  ascii_table_8x16[95][16];
 void  display_string_8x16(unsigned char line,char column,char *str) ;
 void delay(int i);
@@ -502,3 +504,5 @@ const uint8_t  ascii_table_8x16[95][16]={
 /*-- Comic Sans MS12; 此字体下对应的点阵为：宽x 高=8x16 --*/
 0x00,0x06,0x01,0x01,0x02,0x02,0x04,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 };
+
+#endif

@@ -36,8 +36,8 @@
 #define TYPE_DISTINGUISH_RANGE          (0.15)      // 在平均值15%上下浮动
 #define TYPE_DISTINGUISH_COUNT          (DATA_SIZE * 0.04)    // 在平均值15%上下浮动的数据量超过的数量
 
-#define CLEAN_DOWN_CONFIRM_TIMES        (1)		// 降低B值的确认时间(秒 分钟)
-#define CLEAN_UP_CONFIRM_TIMES          (1)	    // 提高B值的确认时间(次 分钟)  分钟数 最大支持45天
+#define CLEAN_DOWN_CONFIRM_TIMES        (30)		// 降低B值的确认时间(秒 分钟)
+#define CLEAN_UP_CONFIRM_TIMES          (100)	    // 提高B值的确认时间(次 分钟)  分钟数 最大支持45天
 #define CLEAN_UP_UPDATE_THRESHOLD       (15)        // B值更新门限（达到该值才更新）
 #define CLEAN_UP_DISTINGUISH_RANGE      (0.05)	    // 每次计算提高B值的数据浮动范围(与最后一次获取到值的比较值, 若大于该范围则会重新计算)
 #define CLEAN_UP_FINAL_RANGE            (0.40)      // 最终更新前判断是否变化值大于该值
